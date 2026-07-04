@@ -34,7 +34,13 @@ Upstream base URL is configurable via `existing-api.base-url` (default
 - **Non-blocking I/O** — WebClient + Netty, sized for the 200-VU load test.
 - **Configurable upstream** — base URL via property/env, so it runs the same on
   host or in a container.
+- **Resilient detail fetch** — each detail call has a timeout (`detail.timeout`,
+  default `2s`) and is dropped on 404 / 500 / timeout, so one bad or slow
+  dependency never sinks the whole response.
+- **404 passthrough** — a missing *main* product returns 404; a missing
+  *similar* product is just left out of the list.
 
 ### Next (in progress)
-- Per-call timeout + skip-on-failure (tolerate 404 / 500 / slow details).
+- Fast-fail for repeatedly-slow ids (circuit breaker / negative cache) to remove
+  the timeout wall on the slow scenarios.
 - Caffeine cache on the upstream calls (the load test hammers a handful of ids).
