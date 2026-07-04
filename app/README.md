@@ -37,9 +37,10 @@ Upstream base URL is configurable via `existing-api.base-url` (default
 - **Non-blocking I/O** — WebClient + Netty, sized for the 200-VU load test.
 - **Configurable upstream** — base URL via property/env, so it runs the same on
   host or in a container.
-- **Resilient detail fetch** — each detail call has a timeout (`detail.timeout`,
-  default `2s`) and is dropped on 404 / 500 / timeout, so one bad or slow
-  dependency never sinks the whole response.
+- **Time-boxed upstream calls** — both the similar-ids and detail calls have a
+  timeout (`upstream.timeout`, default `2s`), so a hung dependency never hangs the
+  request. A detail call is dropped on 404 / 500 / timeout, so one bad or slow
+  product never sinks the whole response.
 - **404 passthrough** — a missing *main* product returns 404; a missing
   *similar* product is just left out of the list.
 - **Caching + request coalescing** — Caffeine `AsyncLoadingCache` on both upstream
@@ -54,6 +55,6 @@ Upstream base URL is configurable via `existing-api.base-url` (default
 | property | default | purpose |
 |---|---|---|
 | `existing-api.base-url` | `http://localhost:3001` | upstream mock API |
-| `detail.timeout` | `2s` | per-detail-call timeout |
+| `upstream.timeout` | `2s` | per-upstream-call timeout |
 | `cache.ttl` | `60s` | TTL for cached details / ids |
 | `cache.negative-ttl` | `10s` | TTL for cached misses |

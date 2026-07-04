@@ -26,14 +26,15 @@ public class SimilarProductsService {
 	private final AsyncLoadingCache<String, Optional<ProductDetail>> detailCache;
 
 	public SimilarProductsService(ProductClient client,
-			@Value("${detail.timeout:2s}") Duration detailTimeout,
+			@Value("${upstream.timeout:2s}") Duration timeout,
 			@Value("${cache.ttl:60s}") Duration ttl,
 			@Value("${cache.negative-ttl:10s}") Duration negativeTtl) {
 
+		// A timeout here too: a hung similar-ids call must not hang the request forever.
 		this.similarIdsCache = Caffeine.newBuilder()
 				.maximumSize(MAX_ENTRIES)
 				.expireAfterWrite(ttl)
-				.buildAsync((id, ex) -> client.similarIds(id).toFuture());
+				.buildAsync((id, ex) -> client.similarIds(id).timeout(timeout).toFuture());
 
 		this.detailCache = Caffeine.newBuilder()
 				.maximumSize(MAX_ENTRIES)
@@ -43,7 +44,7 @@ public class SimilarProductsService {
 				.expireAfter(Expiry.creating(
 						(String id, Optional<ProductDetail> v) -> v.isPresent() ? ttl : negativeTtl))
 				.buildAsync((id, ex) -> client.detail(id)
-						.timeout(detailTimeout)
+						.timeout(timeout)
 						.map(Optional::of)
 						.onErrorReturn(Optional.empty())
 						.toFuture());
@@ -61,7 +62,7 @@ public class SimilarProductsService {
 
 	private Mono<ProductDetail> detail(String id) {
 		return Mono.fromFuture(() -> detailCache.get(id), true)
-				.flatMap(opt -> Mono.justOrEmpty(opt)); // empty Optional -> product skipped
+				.flatMap(Mono::justOrEmpty); // empty Optional -> product skipped
 	}
 
 	// The main product's similar-ids call 404'd -> product unknown. Walk the cause chain

@@ -25,8 +25,8 @@ class SimilarProductsServiceTest {
 		return WebClientResponseException.create(code, "err", HttpHeaders.EMPTY, new byte[0], null);
 	}
 
-	private static SimilarProductsService service(ProductClient client, Duration detailTimeout) {
-		return new SimilarProductsService(client, detailTimeout, Duration.ofMinutes(1), Duration.ofSeconds(10));
+	private static SimilarProductsService service(ProductClient client, Duration timeout) {
+		return new SimilarProductsService(client, timeout, Duration.ofMinutes(1), Duration.ofSeconds(10));
 	}
 
 	@Test
