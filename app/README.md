@@ -16,6 +16,9 @@ It builds the app, runs it as a container on the mock's network, executes the
 full k6 suite (all 5 scenarios), and prints the summary. Charts:
 <http://localhost:3000/d/Le2Ku9NMk/k6-performance-test>
 
+Unit tests (service resilience + caching, and the HTTP 200/404 contract) run
+with `cd app && ./mvnw test`.
+
 ## Run the app on its own
 
 ```bash
