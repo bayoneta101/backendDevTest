@@ -39,8 +39,18 @@ Upstream base URL is configurable via `existing-api.base-url` (default
   dependency never sinks the whole response.
 - **404 passthrough** — a missing *main* product returns 404; a missing
   *similar* product is just left out of the list.
+- **Caching + request coalescing** — Caffeine `AsyncLoadingCache` on both upstream
+  calls. The load test hammers a handful of ids, so almost every call is a memory
+  hit; concurrent misses for the same id collapse into a single upstream request.
+- **Negative caching (fast-fail)** — a miss (404 / 500 / timeout) is cached briefly
+  (`cache.negative-ttl`, default `10s`), so a slow or broken id fails fast on the
+  next request instead of paying the timeout again, then recovers automatically.
 
-### Next (in progress)
-- Fast-fail for repeatedly-slow ids (circuit breaker / negative cache) to remove
-  the timeout wall on the slow scenarios.
-- Caffeine cache on the upstream calls (the load test hammers a handful of ids).
+## Config
+
+| property | default | purpose |
+|---|---|---|
+| `existing-api.base-url` | `http://localhost:3001` | upstream mock API |
+| `detail.timeout` | `2s` | per-detail-call timeout |
+| `cache.ttl` | `60s` | TTL for cached details / ids |
+| `cache.negative-ttl` | `10s` | TTL for cached misses |

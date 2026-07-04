@@ -2,6 +2,7 @@ package com.example.similarproducts;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -9,36 +10,68 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClientResponseException.NotFound;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Expiry;
+
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 @Service
 public class SimilarProductsService {
 
-	private final ProductClient client;
-	private final Duration detailTimeout;
+	private static final int MAX_ENTRIES = 10_000;
+
+	private final AsyncLoadingCache<String, List<String>> similarIdsCache;
+	private final AsyncLoadingCache<String, Optional<ProductDetail>> detailCache;
 
 	public SimilarProductsService(ProductClient client,
-			@Value("${detail.timeout:2s}") Duration detailTimeout) {
-		this.client = client;
-		this.detailTimeout = detailTimeout;
+			@Value("${detail.timeout:2s}") Duration detailTimeout,
+			@Value("${cache.ttl:60s}") Duration ttl,
+			@Value("${cache.negative-ttl:10s}") Duration negativeTtl) {
+
+		this.similarIdsCache = Caffeine.newBuilder()
+				.maximumSize(MAX_ENTRIES)
+				.expireAfterWrite(ttl)
+				.buildAsync((id, ex) -> client.similarIds(id).toFuture());
+
+		this.detailCache = Caffeine.newBuilder()
+				.maximumSize(MAX_ENTRIES)
+				// Present details live for "ttl". A miss (404 / 500 / timeout) is stored as
+				// empty for a short "negativeTtl", so a slow or broken id fails fast on the
+				// next request instead of hitting the timeout wall again, then recovers.
+				.expireAfter(Expiry.creating(
+						(String id, Optional<ProductDetail> v) -> v.isPresent() ? ttl : negativeTtl))
+				.buildAsync((id, ex) -> client.detail(id)
+						.timeout(detailTimeout)
+						.map(Optional::of)
+						.onErrorReturn(Optional.empty())
+						.toFuture());
 	}
 
 	public Mono<List<ProductDetail>> similarProducts(String productId) {
-		return client.similarIds(productId)
-				// main product unknown -> 404 (a missing *similar* product is handled below)
-				.onErrorMap(NotFound.class, e -> new ResponseStatusException(HttpStatus.NOT_FOUND))
+		// suppressCancel=true: a client disconnect must not cancel the shared cache load.
+		return Mono.fromFuture(() -> similarIdsCache.get(productId), true)
+				.onErrorMap(SimilarProductsService::isNotFound,
+						e -> new ResponseStatusException(HttpStatus.NOT_FOUND))
 				.flatMapMany(Flux::fromIterable)
-				// fetch details concurrently, keep similarity order
-				.flatMapSequential(this::detailOrSkip)
+				.flatMapSequential(this::detail) // concurrent, similarity order kept
 				.collectList();
 	}
 
-	// Resilience: drop any similar product whose detail 404s, errors, or is too slow,
-	// so one bad dependency call never sinks the whole response.
-	private Mono<ProductDetail> detailOrSkip(String id) {
-		return client.detail(id)
-				.timeout(detailTimeout)
-				.onErrorResume(e -> Mono.empty());
+	private Mono<ProductDetail> detail(String id) {
+		return Mono.fromFuture(() -> detailCache.get(id), true)
+				.flatMap(opt -> Mono.justOrEmpty(opt)); // empty Optional -> product skipped
+	}
+
+	// The main product's similar-ids call 404'd -> product unknown. Walk the cause chain
+	// because the error crosses a CompletableFuture and may be wrapped.
+	private static boolean isNotFound(Throwable e) {
+		for (Throwable t = e; t != null; t = t.getCause()) {
+			if (t instanceof NotFound) {
+				return true;
+			}
+		}
+		return false;
 	}
 }
