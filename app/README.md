@@ -46,9 +46,11 @@ Upstream base URL is configurable via `existing-api.base-url` (default
 - **Caching + request coalescing** — Caffeine `AsyncLoadingCache` on both upstream
   calls. The load test hammers a handful of ids, so almost every call is a memory
   hit; concurrent misses for the same id collapse into a single upstream request.
-- **Negative caching (fast-fail)** — a miss (404 / 500 / timeout) is cached briefly
-  (`cache.negative-ttl`, default `10s`), so a slow or broken id fails fast on the
-  next request instead of paying the timeout again, then recovers automatically.
+- **Negative caching (fast-fail)** — a failed *detail* call (404 / 500 / timeout) is
+  cached briefly (`cache.negative-ttl`, default `10s`), so a slow or broken product
+  fails fast on the next request instead of paying the timeout again, then recovers
+  automatically. (A failed *similar-ids* call isn't cached — it stays retryable and
+  keeps signalling 404 for a missing main product.)
 
 ## Config
 
